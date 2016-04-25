@@ -18,6 +18,7 @@ import rpy2.robjects.packages as rpackages
 import gc
 
 i_rng = pd.date_range('2015-01-01', '2015-01-01 23:45:00', freq='15min').time
+auth = {'app_id': '6bb9d595', 'app_key': '15a6009f9e809a60dd586a18d16b09b9'}
 wd = str(os.getcwd())
 years = ['2012', '2013', '2014', '2015', '2016']
 filenames = ['FullYear.csv', 'Weekdays.csv', 'WeekEnds.csv',
@@ -118,9 +119,15 @@ class Model(object):
             self.Full.count_diff = self.Full.count_diff.astype(int)
 
 
-def GetAddressBook():
+def GetAddressBook(anon=False):
     url = 'https://api.tfl.gov.uk/bikepoint'
-    resp = requests.get(url)
+    if anon is True:
+        resp = requests.get(url)
+    else:
+        resp = requests.get(url, params=auth)
+    if resp.status_code != 200:
+        print('HTTP Error!')
+        return
     Jfile = resp.json()
     ab = []
     for i in Jfile:
@@ -219,10 +226,11 @@ def DownloadFiles():
     URLs = []
     res = []
     for url in urls:
-        name = url[43:]
-        filename = os.path.join(new_path, name)
-        if not os.path.isfile(filename):
-            URLs.append(url)
+        if(url[:43] == 'http://cycling.data.tfl.gov.uk/usage-stats/'):
+            name = url[43:]
+            filename = os.path.join(new_path, name)
+            if not os.path.isfile(filename):
+                URLs.append(url)
     for x in URLs:
         print('Downloading: ' + x)
         res = requests.get(x)
@@ -314,7 +322,7 @@ def ReadFiles(directory):
 
 
 def AdjustOverlap(FullYear):
-    FY = FullYear
+    FY = FullYear.copy()
     DFweek = {}
     DFweekEnd = {}
     for year in years:
@@ -404,60 +412,75 @@ def FileStructure():
 
 
 def Import(type):
-    # type: 'daily' or 'fullyear' or 'split'
+    # type: 'daily' or 'fullyear' or 'split' pr 'multi'
     directory = wd + '\Features\\'
-    Weekdays = OrderedDict()
-    WeekEnds = OrderedDict()
-    FullYear = OrderedDict()
-    WDdaily = OrderedDict()
-    WEdaily = OrderedDict()
-    for year in years:
-        path = directory + year
-        if(os.path.exists(path)):
-            if(type == 'daily'):
-                print('Reading: ' + year + 'WeekDaily.csv')
-                WDdaily[year] = pd.read_csv(path + '\\' + year +
-                                            'WeekDaily.csv',
-                                            parse_dates=0, index_col=0,
-                                            dtype={'Count': np.float32})
-                print('Reading: ' + year + 'WeekEndDaily.csv')
-                WEdaily[year] = pd.read_csv(path + '\\' + year +
-                                            'WeekEndDaily.csv',
-                                            parse_dates=0, index_col=0,
-                                            dtype={'Count': np.float32})
-            elif(type == 'fullyear'):
-                print('Reading: ' + year + 'FullYear.csv')
-                FullYear[year] = pd.read_csv(path + '\\' + year +
-                                             'FullYear.csv',
-                                             parse_dates=[2, 4], index_col=0,
-                                             dtype={'Duaration': np.float32,
-                                                    's_id': np.float32,
-                                                    'e_id': np.float32})
-            elif(type == 'split'):
-                print('Reading: ' + year + 'Weekdays.csv')
-                Weekdays[year] = pd.read_csv(path + '\\' + year +
-                                             'Weekdays.csv',
-                                             parse_dates=[2, 4], index_col=0,
-                                             dtype={'Duaration': np.float32,
-                                                    's_id': np.float32,
-                                                    'e_id': np.float32})
-                print('Reading: ' + year + 'WeekEnds.csv')
-                WeekEnds[year] = pd.read_csv(path + '\\' + year +
-                                             'WeekEnds.csv',
-                                             parse_dates=[2, 4], index_col=0,
-                                             dtype={'Duaration': np.float32,
-                                                    's_id': np.float32,
-                                                    'e_id': np.float32})
-            else:
-                continue
-    if(type == 'daily'):
-        return WDdaily, WEdaily
-    elif(type == 'fullyear'):
-        return FullYear
-    elif(type == 'split'):
-        return Weekdays, WeekEnds
+    if(type == 'multi'):
+        print('Reading: FullYearWDs.csv')
+        WDs = pd.read_csv(directory + 'FullYearWDs.csv', parse_dates=[0],
+                          dtype={'Count': np.int32})
+        print('Reading: FullYearWEs.csv')
+        WEs = pd.read_csv(directory + 'FullYearWEs.csv', parse_dates=[0],
+                          dtype={'Count': np.int32})
+        return WDs, WEs
     else:
-        return 0
+        Weekdays = OrderedDict()
+        WeekEnds = OrderedDict()
+        FullYear = OrderedDict()
+        WDdaily = OrderedDict()
+        WEdaily = OrderedDict()
+        for year in years:
+            path = directory + year
+            if(os.path.exists(path)):
+                if(type == 'daily'):
+                    print('Reading: ' + year + 'WeekDaily.csv')
+                    WDdaily[year] = pd.read_csv(path + '\\' + year +
+                                                'WeekDaily.csv',
+                                                parse_dates=0, index_col=0,
+                                                dtype={'Count': np.float32})
+                    print('Reading: ' + year + 'WeekEndDaily.csv')
+                    WEdaily[year] = pd.read_csv(path + '\\' + year +
+                                                'WeekEndDaily.csv',
+                                                parse_dates=0, index_col=0,
+                                                dtype={'Count': np.float32})
+                elif(type == 'fullyear'):
+                    print('Reading: ' + year + 'FullYear.csv')
+                    FullYear[year] = pd.read_csv(path + '\\' + year +
+                                                 'FullYear.csv',
+                                                 parse_dates=[2, 4],
+                                                 index_col=0,
+                                                 dtype={'Duaration':
+                                                        np.float32,
+                                                        's_id': np.float32,
+                                                        'e_id': np.float32})
+                elif(type == 'split'):
+                    print('Reading: ' + year + 'Weekdays.csv')
+                    Weekdays[year] = pd.read_csv(path + '\\' + year +
+                                                 'Weekdays.csv',
+                                                 parse_dates=[2, 4],
+                                                 index_col=0,
+                                                 dtype={'Duaration':
+                                                        np.float32,
+                                                        's_id': np.float32,
+                                                        'e_id': np.float32})
+                    print('Reading: ' + year + 'WeekEnds.csv')
+                    WeekEnds[year] = pd.read_csv(path + '\\' + year +
+                                                 'WeekEnds.csv',
+                                                 parse_dates=[2, 4],
+                                                 index_col=0,
+                                                 dtype={'Duaration':
+                                                        np.float32,
+                                                        's_id': np.float32,
+                                                        'e_id': np.float32})
+                else:
+                    continue
+        if(type == 'daily'):
+            return WDdaily, WEdaily
+        elif(type == 'fullyear'):
+            return FullYear
+        elif(type == 'split'):
+            return Weekdays, WeekEnds
+        else:
+            return 0
 
 
 def JoinYears(WDdays, WEdays):
@@ -471,53 +494,26 @@ def JoinYears(WDdays, WEdays):
     last = '12-' + years[-1]
     WEs = WEs[first:last].dropna()
     WDs = WDs[first:last].dropna()
+    WDs.to_csv(wd + '\Features\\FullYearWDs.csv')
+    WEs.to_csv(wd + '\Features\\FullYearWEs.csv')
     return WDs, WEs
-
-
-def Recent(WD, WE):
-    recent = next(reversed(WD))
-    WErecent = WE[recent]
-    WDrecent = WD[recent]
-    WDrecent.set_index(WDrecent.s_date, drop=True, inplace=True)
-    WErecent.set_index(WErecent.s_date, drop=True, inplace=True)
-    WDrecent = WDrecent[recent]['1-' + recent:'12-' + recent].dropna()
-    WErecent = WErecent[recent]['1-' + recent:'12-' + recent].dropna()
-    # Find nearest Friday for WD & Sunday fro WE
-    i = 1
-    j = 1
-    while(int(WDrecent[-i:(len(WDrecent) - i + 1)].index.dayofweek) != 4):
-        i += 1
-    while(int(WErecent[-j:(len(WErecent) - j + 1)].index.dayofweek) != 6):
-        j += 1
-    # Take last 2 weeks
-    lastWD = int(WDrecent[-i:(len(WDrecent) - i + 1)].index.dayofyear)
-    lastWE = int(WErecent[-j:(len(WErecent) - j + 1)].index.dayofyear)
-    firstWD = lastWD - 14
-    firstWE = lastWE - 14
-    rowWD = (WDrecent.index.dayofyear > firstWD) & (
-        WDrecent.index.dayofyear < (lastWD + 1))
-    rowWE = (WErecent.index.dayofyear > firstWE) & (
-        WErecent.index.dayofyear < (lastWE + 1))
-    ModelWD = WDrecent.loc[rowWD, :]
-    ModelWE = WErecent.loc[rowWE, :]
-    return ModelWD, ModelWE
 
 
 def RecentFull(dataframe):
     recent = next(reversed(dataframe))
-    DF = dataframe[recent]
+    DF = dataframe[recent].copy()
+    DF.sort_values('s_date', inplace=True)
     DF.set_index(DF.s_date, drop=True, inplace=True)
     DF = DF[recent]['1-' + recent:'12-' + recent].dropna()
-    # Find nearest Friday for WD & Sunday fro WE
+    # Find nearest Sunday
     j = 1
     while(int(DF[-j:(len(DF) - j + 1)].index.dayofweek) != 6):
         j += 1
     # Take last 2 weeks
-    lastW = int(DF[-j:(len(DF) - j + 1)].index.dayofyear)
-    firstW = lastW - 14
-    row = (DF.index.dayofyear > firstW) & (DF.index.dayofyear < (lastW + 1))
-    Model = DF.loc[row, :]
-    return Model
+    DF = DF[:(-j + 1)]
+    WD = DF.last('4W')
+    WE = DF.last('5W')
+    return WD, WE
 
 
 def CalcSpeeds(dataframe):
@@ -577,6 +573,55 @@ def Transform(dataframe, start, end):
     return adjacency, DF
 
 
+def GetSeasonalIndex():
+    try:
+        WDs, WEs = Import('multi')
+    except:
+        print('No multi-year daily average file found!')
+        return
+    WDs.set_index('s_date', inplace=True, drop=True)
+    WDs = WDs['2012':'2015']
+    WEs.set_index('s_date', inplace=True, drop=True)
+    WEs = WEs['2012':'2015']
+    WDseasonal = pd.DataFrame(index=years, columns=range(1, 13))
+    WEseasonal = pd.DataFrame(index=years, columns=range(1, 13))
+    for year in years[:-1]:
+        for month in range(1, 13):
+            WDaverage = WDs[(str(month) + '-' + year)].mean()[0]
+            WEaverage = WEs[(str(month) + '-' + year)].mean()[0]
+            WDseasonal[month][year] = WDaverage
+            WEseasonal[month][year] = WEaverage
+    WDseasonal['Annual'] = WDseasonal.mean(axis=1)
+    WDseasonal.dropna(inplace=True)
+    WDseasonal.reset_index(inplace=True)
+    WEseasonal['Annual'] = WEseasonal.mean(axis=1)
+    WEseasonal.dropna(inplace=True)
+    WEseasonal.reset_index(inplace=True)
+    av = pd.DataFrame(index=['Average'], columns=range(1, 13))
+    WDseasonal = WDseasonal.append(av)
+    WEseasonal = WEseasonal.append(av)
+    for month in range(1, 13):
+        WDaverage = WDseasonal[month].mean()
+        WDseasonal.loc['Average', month] = WDaverage
+        WEaverage = WEseasonal[month].mean()
+        WEseasonal.loc['Average', month] = WEaverage
+    WDseasonal.loc['Average', 'Annual'] = WDseasonal[-1:].mean(axis=1)[0]
+    WEseasonal.loc['Average', 'Annual'] = WEseasonal[-1:].mean(axis=1)[0]
+    si = pd.DataFrame(index=['S_Index'], columns=range(1, 13))
+    WDseasonal = WDseasonal.append(si)
+    WEseasonal = WEseasonal.append(si)
+    WDannual_average = WDseasonal.loc['Average', 'Annual']
+    WEannual_average = WEseasonal.loc['Average', 'Annual']
+    for month in range(1, 13):
+        WDmonth_average = WDseasonal.loc['Average', month]
+        WDseasonal.loc['S_Index', month] = WDmonth_average / WDannual_average
+        WEmonth_average = WEseasonal.loc['Average', month]
+        WEseasonal.loc['S_Index', month] = WEmonth_average / WEannual_average
+    WDseasonal.to_csv(wd + '\Features\WDseasonal_Index.csv')
+    WEseasonal.to_csv(wd + '\Features\WEseasonal_Index.csv')
+    return WDseasonal, WEseasonal
+
+
 def RunWDModel(recent):
     pandas2ri.activate()
     # R package names
@@ -606,15 +651,18 @@ def RunWDModel(recent):
     output = pd.DataFrame(columns=['count_diff', 'DateTime', 'Type', 'ID'])
     absent = []
     errors = []
+    done = False
     for x in station_range:
         SepModel = Model(recent, x)
         if SepModel.valid is False:
             absent.append(x)
             continue
         SepModel.PreProcess(separate=True)
-        SepModel.WD = SepModel.WD[:480]
+        # Ensure series length is only 2 Weeks
+        SepModel.WD = SepModel.WD[:20 * 48]
         if(len(SepModel.WD) > 0):
-            if(x == 1):  # Only needs to be run once, same for all stations
+            if done is False:  # Only needs to be run once
+                done = True
                 WD_dates = SepModel.WD.index
                 y = np.asarray(WD_dates[-1].year,
                                dtype='datetime64[Y]') - 1970
@@ -625,7 +673,7 @@ def RunWDModel(recent):
                                              freq='30Min', periods=48 * 4)
             SepModel.WD.reset_index(inplace=True, drop=True)
             gc.collect()
-            robjects.r('o = c(2,0,3)')
+            robjects.r('o = c(2,0,1)')
             robjects.r('sorder = c(1,1,2)')
             robjects.r('s = list(order=sorder, period=48)')
             DF = pandas2ri.py2ri(SepModel.WD)
@@ -660,7 +708,97 @@ def RunWDModel(recent):
     path = wd + '\Model'
     if not os.path.exists(path):
         os.mkdir(path)
-    output.to_csv(path + '\\' 'ModelOutput.csv')
+    output.to_csv(path + '\\' 'WDModelOutput.csv')
+    return output, absent, errors
+
+
+def RunWEModel(recent):
+    pandas2ri.activate()
+    # R package names
+    packnames = ('forecast')
+    if all(rpackages.isinstalled(x) for x in packnames):
+        have_tutorial_packages = True
+    else:
+        have_tutorial_packages = False
+    if not have_tutorial_packages:
+        # import R's utility package
+        utils = rpackages.importr('utils')
+        # select a mirror for R packages
+        utils.chooseCRANmirror(ind=1)  # select the first mirror in the list
+    if not have_tutorial_packages:
+        # R vector of strings
+        from rpy2.robjects.vectors import StrVector
+        # file
+        packnames_to_install = [x for x in packnames
+                                if not rpackages.isinstalled(x)]
+        if len(packnames_to_install) > 0:
+            utils.install_packages(StrVector(packnames_to_install))
+    # Import R packages
+    forecast = importr('forecast')
+    base = importr('base')
+    # Model subset of data for particular station
+    jump = 8  # skip weekend
+    output = pd.DataFrame(columns=['count_diff', 'DateTime', 'Type', 'ID'])
+    absent = []
+    errors = []
+    done = False
+    for x in station_range:
+        WEModel = Model(recent, x)
+        if WEModel.valid is False:
+            absent.append(x)
+            continue
+        WEModel.PreProcess(separate=True)
+        # Ensure series length is only 2 Weeks
+        WEModel.WE = WEModel.WE[:8 * 48]
+        if(len(WEModel.WE) > 0):
+            if done is False:  # Only needs to be run once
+                done = True
+                WE_dates = WEModel.WE.index
+                y = np.asarray(WE_dates[-1].year,
+                               dtype='datetime64[Y]') - 1970
+                doy = np.asarray((WE_dates[-1].dayofyear + jump),
+                                 dtype='timedelta64[D]') - 1
+                new = pd.to_datetime(y + doy)
+                new_dates = pd.DatetimeIndex(start=new,
+                                             freq='30Min', periods=48 * 2)
+            WEModel.WE.reset_index(inplace=True, drop=True)
+            gc.collect()
+            robjects.r('o = c(0,0,0)')
+            robjects.r('sorder = c(0,1,0)')
+            robjects.r('s = list(order=sorder, period=18)')
+            DF = pandas2ri.py2ri(WEModel.WE)
+            robjects.r.assign('df', DF)
+            try:
+                robjects.r('fit = Arima(df,order=o, seasonal=s, method="CSS")')
+            except:
+                errors.append(x)
+                continue
+            f_cast = robjects.r('f_cast = forecast(fit, h=2*48)')
+            arima_mean = np.array(f_cast.rx('mean'))
+            robjects.r('rm(list = ls(all = TRUE))')
+            robjects.r('gc()')
+            results = pd.DataFrame({'count_diff':
+                                    arima_mean.flatten()}).round()
+            results.count_diff = results.count_diff.astype(int)
+            results['DateTime'] = new_dates
+            results['Type'] = 'Forecast'
+            results['ID'] = x
+            WEModel.WE['DateTime'] = WE_dates
+            WEModel.WE['Type'] = 'Historic'
+            WEModel.WE['ID'] = x
+            out = WEModel.WE.append(results)
+            output = output.append(out)
+            del f_cast
+            del DF
+            del WEModel
+            gc.collect()
+    output.ID = output.ID.astype(int)
+    output.count_diff = output.count_diff.astype(int)
+    output.reset_index(inplace=True, drop=True)
+    path = wd + '\Model'
+    if not os.path.exists(path):
+        os.mkdir(path)
+    output.to_csv(path + '\\' 'WEModelOutput.csv')
     return output, absent, errors
 
 if __name__ == '__main__':
@@ -670,6 +808,7 @@ if __name__ == '__main__':
     WE = {}
     WDdays = {}
     WEdays = {}
+    updatedFolders = {}
     # Organize file structure if needed
     FileStructure()
     # Dowload data files to populate directory
@@ -679,16 +818,30 @@ if __name__ == '__main__':
     # Check to see which folders have been updated
     updatedFolders = OrganizeFiles()
     # Create DataFrame for full years
-    FY, WD, WE = CreateYearFrames(updatedFolders)
-    # Adjust any overlaps within the year frames
-    print('Adjusting files to account for overlaps in data')
-    FY, WD, WE = AdjustOverlap(FY)
+    CreateYearFrames(updatedFolders)
+    # Import YearFrames
+    FY = Import('fullyear')
+    change = False
+    for year in cd.years:
+        if(updatedFolders[year] is True):
+            change = True
+    if change is True:
+        # Adjust any overlaps within the year frames
+        print('Adjusting files to account for overlaps in data')
+        FY, WD, WE = AdjustOverlap(FY)
     # Create Daily Usage
     print('Caculating Daily Usage Totals')
     WDdays, WEdays = YearsDaily(WD, WE)
+    # Create Multi-Year Daily Usage
+    print('Creating Multi-Year Daily Usage Totals')
+    WDs, WEs = JoinYears(WDdays, WEdays)
+    # Create Seasonal Index
+    print('Creating Seasonal Index')
+    GetSeasonalIndex()
     # Find most recent 2 weeks
     print('Selecting most recent data')
-    recent = RecentFull(FullYear)
+    recentWD, recentWE = RecentFull(FY)
     # Run R Model (WARNING: long runtime)
     print('Fitting Model and Forecasting')
-    output = RunWDModel(recent)
+    WDforecasts = RunWDModel(recent)
+    # WEforecasts = RunWEModel(recent)
